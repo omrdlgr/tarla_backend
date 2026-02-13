@@ -39,9 +39,13 @@ client.on('message', (topic, message) => {
     .floatField('battery', data.battery);
 
   writeApi.writePoint(point);
-  writeApi.flush()
-    .then(() => console.log('✅ Data yazıldı'))
-    .catch(err => console.error('❌ InfluxDB Hatası:', err));
+  try {
+  await writeApi.flush();
+} catch (err) {  console.error('❌ InfluxDB flush hatası:', err);
+}
+
+ 
+
 });
 
 // --- Express Route ---
