@@ -86,7 +86,7 @@ app.get('/api/status/:deviceId', async (req, res) => {
   const fluxQuery = `
     from(bucket: "${process.env.INFLUX_BUCKET}")
       |> range(start: -1h)
-      |> filter(fn: (r) => r._measurement == "tarla_status")
+      |> filter(fn: (r) => r._measurement == "tarla_data")
       |> filter(fn: (r) => r.device == "${deviceId}")
       |> last()
   `;
