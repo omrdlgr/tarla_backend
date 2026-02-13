@@ -52,6 +52,17 @@ client.on('message', async (topic, message) => {
   console.log("🔥 MQTT RAW:", message.toString());
 });
 
+client.on('connect', () => {
+  console.log("🟢 MQTT Connected");
+  client.subscribe('#');   // geçici test için
+});
+
+client.on('message', (topic, message) => {
+  console.log("🔥 GELEN TOPIC:", topic);
+  console.log("🔥 GELEN MESAJ:", message.toString());
+});
+
+
 
 
 client.on('message', async (topic, message) => {
