@@ -21,7 +21,7 @@ const writeApi = influxDB.getWriteApi(
   process.env.INFLUX_BUCKET
 );
 
-console.log("MQTT URL:", process.env.MQTT_URL);
+console.log("MQTT URL:", process.env.MQTT_BROKER);
 
 
 /* =========================
