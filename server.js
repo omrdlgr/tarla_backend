@@ -16,7 +16,7 @@ const client = mqtt.connect(process.env.MQTT_HOST, {
 
 client.on('connect', () => {
   console.log('✅ MQTT Connected');
-  client.subscribe('tarla/+/data', (err) => {
+  client.subscribe('tarla/istasyon1/data', (err) => {
     if (!err) console.log('📩 Subscribed to tarla topics');
   });
 });
