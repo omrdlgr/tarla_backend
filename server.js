@@ -12,9 +12,9 @@ writeApi.useDefaultTags({ location: 'istasyon1' });
 
 
 
-const mqtt = require('mqtt');
-const { InfluxDB, Point } = require('@influxdata/influxdb-client');
-const express = require('express');
+const mqtt = import('mqtt');
+const { InfluxDB, Point } = import('@influxdata/influxdb-client');
+const express = import('express');
 const app = express();
 const port = process.env.PORT || 3000;
 
