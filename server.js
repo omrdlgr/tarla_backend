@@ -58,6 +58,8 @@ client.on('message', async (topic, message) => {
       .floatField('temperature', data.temperature)
       .floatField('humidity', data.humidity)
       .floatField('soil_moisture', data.soil_moisture)
+      .floatField('wind_speed', data.wind_speed)
+      .floatField('wind_direction', data.wind_direction)
       .floatField('battery', data.battery);
     writeApi.writePoint(dataPoint);
 
