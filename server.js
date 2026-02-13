@@ -20,6 +20,7 @@ const writeApi = influxDB.getWriteApi(
   process.env.INFLUX_ORG,
   process.env.INFLUX_BUCKET
 );
+
 const queryApi = influxDB.getQueryApi(process.env.INFLUX_ORG);
 
 /* =========================
@@ -37,7 +38,9 @@ const client = mqtt.connect(process.env.MQTT_BROKER, {
   rejectUnauthorized: false
 });
 
-client.on('error', (err) => console.error('❌ MQTT Error:', err));
+client.on('error', (err) => {
+  console.error('❌ MQTT Error:', err);
+});
 
 client.on('connect', () => {
   console.log('🟢 MQTT Connected');
@@ -48,28 +51,39 @@ client.on('message', async (topic, message) => {
   try {
     const data = JSON.parse(message.toString());
     const deviceId = topic.split('/')[1];
-    deviceLastSeen[deviceId] = Date.now();
 
     console.log(`📩 Data from ${deviceId}`);
 
-    // ===== SENSOR DATA =====
+    // Son görülme zamanı
+    deviceLastSeen[deviceId] = Date.now();
+
+    /* ===== SENSOR DATA ===== */
     const dataPoint = new Point('tarla_data')
       .tag('device', deviceId)
-      .floatField('temperature', data.temperature)
-      .floatField('humidity', data.humidity)
-      .floatField('soil_moisture', data.soil_moisture)
-      .floatField('wind_speed', data.wind_speed)
-      .floatField('wind_direction', data.wind_direction)
-      .floatField('battery', data.battery);
+      .floatField('temperature', data.temperature ?? 0)
+      .floatField('humidity', data.humidity ?? 0)
+      .floatField('soil_moisture', data.soil_moisture ?? 0)
+      .floatField('battery', data.battery ?? 0);
+
+    // Opsiyonel alanlar: varsa ekle
+    if (data.wind_speed !== undefined) {
+      dataPoint.floatField('wind_speed', data.wind_speed);
+    }
+    if (data.wind_direction !== undefined) {
+      dataPoint.intField('wind_direction', data.wind_direction);
+    }
+
     writeApi.writePoint(dataPoint);
 
-    // ===== ONLINE STATUS =====
+    /* ===== ONLINE STATUS ===== */
     if (deviceStates[deviceId] !== 1) {
       const statusPoint = new Point('tarla_status')
         .tag('device', deviceId)
         .intField('status', 1);
+
       writeApi.writePoint(statusPoint);
       deviceStates[deviceId] = 1;
+
       console.log(`🟢 ${deviceId} ONLINE yazıldı`);
     }
 
@@ -88,14 +102,18 @@ setInterval(async () => {
   const offlineThreshold = 5 * 60 * 1000; // 5 dakika
 
   for (const deviceId in deviceLastSeen) {
-    if (now - deviceLastSeen[deviceId] > offlineThreshold && deviceStates[deviceId] !== 0) {
-      const statusPoint = new Point('tarla_status')
-        .tag('device', deviceId)
-        .intField('status', 0);
-      writeApi.writePoint(statusPoint);
-      await writeApi.flush();
-      deviceStates[deviceId] = 0;
-      console.log(`🔴 ${deviceId} OFFLINE yazıldı`);
+    if (now - deviceLastSeen[deviceId] > offlineThreshold) {
+      if (deviceStates[deviceId] !== 0) {
+        const statusPoint = new Point('tarla_status')
+          .tag('device', deviceId)
+          .intField('status', 0);
+
+        writeApi.writePoint(statusPoint);
+        await writeApi.flush();
+
+        deviceStates[deviceId] = 0;
+        console.log(`🔴 ${deviceId} OFFLINE yazıldı`);
+      }
     }
   }
 }, 60000);
@@ -105,11 +123,14 @@ setInterval(async () => {
 ========================= */
 
 // Health check
-app.get('/', (req, res) => res.send('Backend çalışıyor 🚀'));
+app.get('/', (req, res) => {
+  res.send('Backend çalışıyor 🚀');
+});
 
 // Cihaz Status
 app.get('/api/status/:deviceId', async (req, res) => {
   const { deviceId } = req.params;
+
   const fluxQuery = `
     from(bucket: "${process.env.INFLUX_BUCKET}")
       |> range(start: -1h)
@@ -117,9 +138,12 @@ app.get('/api/status/:deviceId', async (req, res) => {
       |> filter(fn: (r) => r.device == "${deviceId}")
       |> last()
   `;
+
   try {
     const rows = await queryApi.collectRows(fluxQuery);
-    res.json({ status: rows.length ? rows[0]._value : 0 });
+    if (rows.length === 0) return res.json({ status: 0 });
+
+    res.json({ status: rows[0]._value });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -128,23 +152,27 @@ app.get('/api/status/:deviceId', async (req, res) => {
 // Son sensör verisi
 app.get('/api/last-data/:deviceId', async (req, res) => {
   const { deviceId } = req.params;
+
   const fluxQuery = `
     from(bucket: "${process.env.INFLUX_BUCKET}")
       |> range(start: -1h)
       |> filter(fn: (r) => r._measurement == "tarla_data")
       |> filter(fn: (r) => r.device == "${deviceId}")
       |> last()
-      |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
   `;
+
+  const result = {};
+
   try {
-    const rows = await queryApi.collectRows(fluxQuery);
-    res.json(rows.length ? rows[0] : {});
+    await queryApi.collectRows(fluxQuery, (row) => {
+      result[row._field] = row._value;
+    });
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-/* =========================
-   Server Start
-========================= */
-app.listen(port, () => console.log(`🚀 Server listening on port ${port}`));
+app.listen(port, () => {
+  console.log(`🚀 Server listening on port ${port}`);
+});
