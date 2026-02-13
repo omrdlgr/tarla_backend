@@ -73,16 +73,6 @@ client.on('message', async (topic, message) => {
   }
 });
 
-
-
-
-
-
-
-
-
-
-
 /* =========================
    Health Check
 ========================= */
@@ -98,4 +88,19 @@ client.on('connect', () => {
   console.log('🟢 MQTT Connected');
   client.subscribe('#');
 });
+
+
+setInterval(() => {
+  const now = Date.now();
+  const offlineThreshold = 5 * 60 * 1000; // 5 dakika
+
+  Object.keys(deviceLastSeen).forEach(deviceId => {
+    const lastSeen = deviceLastSeen[deviceId];
+
+    if (now - lastSeen > offlineThreshold) {
+      console.log(`🔴 ${deviceId} OFFLINE`);
+    }
+  });
+}, 60000); // her 1 dakikada kontrol
+
 
