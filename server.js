@@ -88,6 +88,7 @@ app.get('/api/status/:deviceId', async (req, res) => {
       |> range(start: -1h)
       |> filter(fn: (r) => r._measurement == "tarla_data")
       |> filter(fn: (r) => r.device == "${deviceId}")
+      |> filter(fn: (r) => r._field == "status")
       |> last()
   `;
 
@@ -104,6 +105,7 @@ app.get('/api/status/:deviceId', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 
 app.listen(port, () => {
