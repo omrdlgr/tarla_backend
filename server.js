@@ -88,6 +88,8 @@ client.on('connect', () => {
   console.log('🟢 MQTT Connected');
   client.subscribe('#');
 });
+import { InfluxDB, Point } from '@influxdata/influxdb-client';
+const queryApi = influxDB.getQueryApi(process.env.INFLUX_ORG);
 
 
 
