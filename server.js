@@ -20,7 +20,7 @@ const writeApi = influxDB.getWriteApi(
   process.env.INFLUX_ORG,
   process.env.INFLUX_BUCKET
 );
-
+const queryApi = influxDB.getQueryApi(process.env.INFLUX_ORG);
 console.log("MQTT URL:", process.env.MQTT_BROKER);
 
 
@@ -80,6 +80,32 @@ app.get('/', (req, res) => {
   res.send('Backend çalışıyor 🚀');
 });
 
+app.get('/api/status/:deviceId', async (req, res) => {
+  const { deviceId } = req.params;
+
+  const fluxQuery = `
+    from(bucket: "${process.env.INFLUX_BUCKET}")
+      |> range(start: -1h)
+      |> filter(fn: (r) => r._measurement == "tarla_status")
+      |> filter(fn: (r) => r.device == "${deviceId}")
+      |> last()
+  `;
+
+  try {
+    const rows = await queryApi.collectRows(fluxQuery);
+
+    if (rows.length === 0) {
+      return res.json({ status: 0 });
+    }
+
+    res.json({ status: rows[0]._value });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 app.listen(port, () => {
   console.log(`🚀 Server listening on port ${port}`);
 });
@@ -88,8 +114,7 @@ client.on('connect', () => {
   console.log('🟢 MQTT Connected');
   client.subscribe('#');
 });
-import { InfluxDB, Point } from '@influxdata/influxdb-client';
-const queryApi = influxDB.getQueryApi(process.env.INFLUX_ORG);
+
 
 
 
