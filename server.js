@@ -35,24 +35,23 @@ client.on('connect', () => {
 });
 
 client.on('message', (topic, message) => {
-  try {
-    const data = JSON.parse(message.toString());
-    console.log('📩 Data received:', data);
+  const data = JSON.parse(message.toString());
+  console.log('📩 Data received:', data);
 
-    const writeApi = influx.getWriteApi(process.env.INFLUX_ORG, process.env.INFLUX_BUCKET);
-    const point = new Point('tarla_data')
-      .tag('device_id', data.device_id)
-      .floatField('temperature', data.temperature)
-      .floatField('humidity', data.humidity)
-      .floatField('soil_moisture', data.soil_moisture)
-      .floatField('battery', data.battery)
-      .intField('timestamp', data.timestamp);
-    writeApi.writePoint(point);
-    writeApi.close().catch(e => console.error(e));
-  } catch (e) {
-    console.error('Error parsing MQTT message', e);
-  }
+  // InfluxDB’ye yaz
+  const point = new Point('sensor_data')
+    .tag('device', data.device_id)
+    .floatField('temperature', data.temperature)
+    .floatField('humidity', data.humidity)
+    .floatField('soil_moisture', data.soil_moisture)
+    .floatField('battery', data.battery);
+
+  writeApi.writePoint(point);
+  writeApi.flush()
+    .then(() => console.log('✅ Data yazıldı'))
+    .catch(err => console.error('❌ InfluxDB Hatası:', err));
 });
+
 
 // Express API
 app.get('/api/data', async (req, res) => {
