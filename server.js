@@ -26,6 +26,16 @@ client.on('connect', () => {
   client.subscribe('tarla/istasyon1/data');
 });
 
+client.on('connect', () => {
+  console.log("🟢 MQTT Connected");
+  client.subscribe('#');
+});
+
+client.on('message', (topic, message) => {
+  console.log("🔥 GELEN TOPIC:", topic);
+  console.log("🔥 GELEN RAW:", message.toString());
+});
+
 
 setInterval(async () => {
   const point = new Point('sensor_data')
