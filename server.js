@@ -29,7 +29,7 @@ console.log("MQTT URL:", process.env.MQTT_BROKER);
 ========================= */
 const client = mqtt.connect(process.env.MQTT_BROKER, {
   username: process.env.MQTT_USER,
-  password: process.env.MQTT_PASSWORD,
+  password: process.env.MQTT_PASS,
   rejectUnauthorized: false
 });
 
