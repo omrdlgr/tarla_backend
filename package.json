@@ -1,0 +1,18 @@
+{
+  "name": "tarla_backend",
+  "version": "1.0.0",
+  "description": "IoT backend for Tarla Project",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@influxdata/influxdb-client": "^1.35.0",
+    "dotenv": "^17.3.1",
+    "mqtt": "^4.3.7",
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
