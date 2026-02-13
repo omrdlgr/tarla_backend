@@ -22,19 +22,15 @@ const client = mqtt.connect(process.env.MQTT_BROKER, {
 });
 
 client.on('connect', () => {
-  console.log('✅ MQTT Connected');
+  console.log("🟢 MQTT Connected");
   client.subscribe('tarla/istasyon1/data');
 });
 
-client.on('connect', () => {
-  console.log("🟢 MQTT Connected");
-  client.subscribe('#');
+client.on('message', (topic, message) => {
+  console.log("🔥 TOPIC:", topic);
+  console.log("🔥 RAW:", message.toString());
 });
 
-client.on('message', (topic, message) => {
-  console.log("🔥 GELEN TOPIC:", topic);
-  console.log("🔥 GELEN RAW:", message.toString());
-});
 
 
 setInterval(async () => {
