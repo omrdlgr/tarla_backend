@@ -60,16 +60,17 @@ client.on('message', async (topic, message) => {
     /* ===== SENSOR DATA ===== */
     const dataPoint = new Point('tarla_data')
       .tag('device', deviceId)
-      .floatField('temperature', data.temperature ?? 0)
-      .floatField('humidity', data.humidity ?? 0)
-      .floatField('soil_moisture', data.soil_moisture ?? 0)
-      .floatField('battery', data.battery ?? 0);
+      .floatField('temperature', data.temperature)
+      .floatField('humidity', data.humidity)
+      .floatField('soil_moisture', data.soil_moisture)
+      .floatField('battery', data.battery);
 
-    // Opsiyonel alanlar: varsa ekle
-    if (data.wind_speed !== undefined) {
+    // Opsiyonel alanlar: sadece sayı ise ekle
+    if (typeof data.wind_speed === 'number') {
       dataPoint.floatField('wind_speed', data.wind_speed);
     }
-    if (data.wind_direction !== undefined) {
+
+    if (typeof data.wind_direction === 'number') {
       dataPoint.intField('wind_direction', data.wind_direction);
     }
 
@@ -88,7 +89,9 @@ client.on('message', async (topic, message) => {
     }
 
     await writeApi.flush();
+
     console.log(`✅ ${deviceId} verisi Influx'a yazıldı`);
+
   } catch (err) {
     console.error('❌ Veri işleme hatası:', err);
   }
@@ -103,6 +106,7 @@ setInterval(async () => {
 
   for (const deviceId in deviceLastSeen) {
     if (now - deviceLastSeen[deviceId] > offlineThreshold) {
+
       if (deviceStates[deviceId] !== 0) {
         const statusPoint = new Point('tarla_status')
           .tag('device', deviceId)
@@ -112,6 +116,7 @@ setInterval(async () => {
         await writeApi.flush();
 
         deviceStates[deviceId] = 0;
+
         console.log(`🔴 ${deviceId} OFFLINE yazıldı`);
       }
     }
@@ -141,9 +146,13 @@ app.get('/api/status/:deviceId', async (req, res) => {
 
   try {
     const rows = await queryApi.collectRows(fluxQuery);
-    if (rows.length === 0) return res.json({ status: 0 });
+
+    if (rows.length === 0) {
+      return res.json({ status: 0 });
+    }
 
     res.json({ status: rows[0]._value });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -167,7 +176,9 @@ app.get('/api/last-data/:deviceId', async (req, res) => {
     await queryApi.collectRows(fluxQuery, (row) => {
       result[row._field] = row._value;
     });
+
     res.json(result);
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
