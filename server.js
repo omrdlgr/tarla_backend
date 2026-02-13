@@ -42,7 +42,7 @@ client.on('error', (err) => {
 
 client.on('connect', () => {
   console.log('🟢 MQTT Connected');
-  client.subscribe('tarla/istasyon1/data');
+  client.subscribe('tarla/+/data');
 });
 
 client.on('message', async (topic, message) => {
@@ -51,7 +51,7 @@ client.on('message', async (topic, message) => {
 
     console.log('📩 MQTT Data:', data);
 
-    const point = new Point('sensor_data')
+    const point = new Point('tarla_data')
       .tag('device', data.device_id)
       .floatField('temperature', data.temperature)
       .floatField('humidity', data.humidity)
