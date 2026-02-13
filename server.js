@@ -45,28 +45,42 @@ client.on('connect', () => {
   client.subscribe('tarla/+/data');
 });
 
+
+
 client.on('message', async (topic, message) => {
   try {
     const data = JSON.parse(message.toString());
 
-    console.log('📩 MQTT Data:', data);
+    // Device ID'yi topic'ten al
+    const deviceId = topic.split('/')[1];
+
+    console.log(`📩 Data from ${deviceId}:`, data);
 
     const point = new Point('tarla_data')
-      .tag('device', data.device_id)
+      .tag('device', deviceId)
       .floatField('temperature', data.temperature)
       .floatField('humidity', data.humidity)
       .floatField('soil_moisture', data.soil_moisture)
-      .floatField('battery', data.battery)
-      .intField('timestamp', data.timestamp);
+      .floatField('battery', data.battery);
 
     writeApi.writePoint(point);
     await writeApi.flush();
 
-    console.log('✅ Influx yazıldı');
+    console.log(`✅ ${deviceId} Influx yazıldı`);
+
   } catch (err) {
     console.error('❌ Veri işleme hatası:', err);
   }
 });
+
+
+
+
+
+
+
+
+
 
 /* =========================
    Health Check
