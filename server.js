@@ -26,6 +26,24 @@ client.on('connect', () => {
   client.subscribe('tarla/istasyon1/data');
 });
 
+
+setInterval(async () => {
+  const point = new Point('sensor_data')
+    .tag('device', 'test_device')
+    .floatField('temperature', 99.9);
+
+  writeApi.writePoint(point);
+
+  try {
+    await writeApi.flush();
+    console.log("✅ TEST VERİ YAZILDI");
+  } catch (err) {
+    console.error("❌ Influx hata:", err);
+  }
+}, 10000);
+
+
+
 client.on('message', async (topic, message) => {
   const data = JSON.parse(message.toString());
   const point = new Point('sensor_data')
