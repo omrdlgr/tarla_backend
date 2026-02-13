@@ -42,6 +42,10 @@ setInterval(async () => {
   }
 }, 10000);
 
+client.on('message', async (topic, message) => {
+  console.log("🔥 MQTT RAW:", message.toString());
+});
+
 
 
 client.on('message', async (topic, message) => {
