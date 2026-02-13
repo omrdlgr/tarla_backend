@@ -26,27 +26,26 @@ client.on('connect', () => {
   client.subscribe('tarla/istasyon1/data');
 });
 
-client.on('message', (topic, message) => {
+client.on('message', async (topic, message) => {
   const data = JSON.parse(message.toString());
-  console.log('📩 Data received:', data);
-
-  // InfluxDB’ye yaz
   const point = new Point('sensor_data')
     .tag('device', data.device_id)
     .floatField('temperature', data.temperature)
     .floatField('humidity', data.humidity)
     .floatField('soil_moisture', data.soil_moisture)
-    .floatField('battery', data.battery);
+    .floatField('battery', data.battery)
+    .intField('timestamp', data.timestamp);
 
   writeApi.writePoint(point);
+
   try {
-  await writeApi.flush();
-} catch (err) {  console.error('❌ InfluxDB flush hatası:', err);
-}
-
- 
-
+    await writeApi.flush();
+    console.log('📩 InfluxDB’ye yazıldı:', data);
+  } catch (err) {
+    console.error('❌ InfluxDB flush hatası:', err);
+  }
 });
+
 
 // --- Express Route ---
 app.get('/', (req, res) => {
