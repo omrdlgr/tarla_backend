@@ -51,10 +51,10 @@ client.on('message', async (topic, message) => {
   try {
     const data = JSON.parse(message.toString());
 
-    // Device ID'yi topic'ten al
+    // Device ID topic'ten geliyor
     const deviceId = topic.split('/')[1];
 
-    console.log(`📩 Data from ${deviceId}:`, data);
+    console.log(`📩 Data from ${deviceId}`);
 
     const point = new Point('tarla_data')
       .tag('device', deviceId)
@@ -72,6 +72,7 @@ client.on('message', async (topic, message) => {
     console.error('❌ Veri işleme hatası:', err);
   }
 });
+
 
 
 
