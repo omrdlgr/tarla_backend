@@ -1,4 +1,4 @@
-require('dotenv').config();
+import('dotenv').config();
 
 import { InfluxDB, Point } from '@influxdata/influxdb-client';
 
