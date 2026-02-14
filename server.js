@@ -66,13 +66,13 @@ client.on('message', async (topic, message) => {
       .floatField('battery', data.battery);
 
     // Opsiyonel alanlar: sadece sayı ise ekle
-    if (typeof data.wind_speed === 'number') {
+    if (data.wind_speed !== undefined) {
       dataPoint.floatField('wind_speed', data.wind_speed);
     }
+   if (data.wind_direction !== undefined) {
+     dataPoint.floatField('wind_direction', data.wind_direction);
+   }
 
-    if (typeof data.wind_direction === 'number') {
-      dataPoint.intField('wind_direction', data.wind_direction);
-    }
 
     writeApi.writePoint(dataPoint);
 
