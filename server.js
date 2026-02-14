@@ -20,7 +20,6 @@ const writeApi = influxDB.getWriteApi(
   process.env.INFLUX_ORG,
   process.env.INFLUX_BUCKET
 );
-
 const queryApi = influxDB.getQueryApi(process.env.INFLUX_ORG);
 
 /* =========================
@@ -53,43 +52,28 @@ client.on('message', async (topic, message) => {
     const deviceId = topic.split('/')[1];
 
     console.log(`📩 Data from ${deviceId}`);
-
-    // Son görülme zamanı
     deviceLastSeen[deviceId] = Date.now();
 
-    /* ===== SENSOR DATA ===== */
+    // Sensor Data
     const dataPoint = new Point('tarla_data')
       .tag('device', deviceId)
       .floatField('temperature', data.temperature)
       .floatField('humidity', data.humidity)
       .floatField('soil_moisture', data.soil_moisture)
       .floatField('battery', data.battery);
-
-    // Opsiyonel alanlar: sadece sayı ise ekle
-    if (data.wind_speed !== undefined) {
-      dataPoint.floatField('wind_speed', data.wind_speed);
-    }
-   if (data.wind_direction !== undefined) {
-     dataPoint.floatField('wind_direction', data.wind_direction);
-   }
-
-
     writeApi.writePoint(dataPoint);
 
-    /* ===== ONLINE STATUS ===== */
+    // Online Status
     if (deviceStates[deviceId] !== 1) {
       const statusPoint = new Point('tarla_status')
         .tag('device', deviceId)
         .intField('status', 1);
-
       writeApi.writePoint(statusPoint);
       deviceStates[deviceId] = 1;
-
       console.log(`🟢 ${deviceId} ONLINE yazıldı`);
     }
 
     await writeApi.flush();
-
     console.log(`✅ ${deviceId} verisi Influx'a yazıldı`);
 
   } catch (err) {
@@ -106,17 +90,13 @@ setInterval(async () => {
 
   for (const deviceId in deviceLastSeen) {
     if (now - deviceLastSeen[deviceId] > offlineThreshold) {
-
       if (deviceStates[deviceId] !== 0) {
         const statusPoint = new Point('tarla_status')
           .tag('device', deviceId)
           .intField('status', 0);
-
         writeApi.writePoint(statusPoint);
         await writeApi.flush();
-
         deviceStates[deviceId] = 0;
-
         console.log(`🔴 ${deviceId} OFFLINE yazıldı`);
       }
     }
@@ -126,16 +106,12 @@ setInterval(async () => {
 /* =========================
    API ENDPOINTS
 ========================= */
-
-// Health check
 app.get('/', (req, res) => {
   res.send('Backend çalışıyor 🚀');
 });
 
-// Cihaz Status
 app.get('/api/status/:deviceId', async (req, res) => {
   const { deviceId } = req.params;
-
   const fluxQuery = `
     from(bucket: "${process.env.INFLUX_BUCKET}")
       |> range(start: -1h)
@@ -143,25 +119,16 @@ app.get('/api/status/:deviceId', async (req, res) => {
       |> filter(fn: (r) => r.device == "${deviceId}")
       |> last()
   `;
-
   try {
     const rows = await queryApi.collectRows(fluxQuery);
-
-    if (rows.length === 0) {
-      return res.json({ status: 0 });
-    }
-
-    res.json({ status: rows[0]._value });
-
+    res.json({ status: rows.length ? rows[0]._value : 0 });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Son sensör verisi
 app.get('/api/last-data/:deviceId', async (req, res) => {
   const { deviceId } = req.params;
-
   const fluxQuery = `
     from(bucket: "${process.env.INFLUX_BUCKET}")
       |> range(start: -1h)
@@ -169,21 +136,20 @@ app.get('/api/last-data/:deviceId', async (req, res) => {
       |> filter(fn: (r) => r.device == "${deviceId}")
       |> last()
   `;
-
   const result = {};
-
   try {
     await queryApi.collectRows(fluxQuery, (row) => {
       result[row._field] = row._value;
     });
-
     res.json(result);
-
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
+/* =========================
+   Server Start
+========================= */
 app.listen(port, () => {
   console.log(`🚀 Server listening on port ${port}`);
 });
