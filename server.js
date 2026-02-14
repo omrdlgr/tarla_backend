@@ -37,9 +37,7 @@ const client = mqtt.connect(process.env.MQTT_BROKER, {
   rejectUnauthorized: false
 });
 
-client.on('error', (err) => {
-  console.error('❌ MQTT Error:', err);
-});
+client.on('error', (err) => console.error('❌ MQTT Error:', err));
 
 client.on('connect', () => {
   console.log('🟢 MQTT Connected');
@@ -50,11 +48,11 @@ client.on('message', async (topic, message) => {
   try {
     const data = JSON.parse(message.toString());
     const deviceId = topic.split('/')[1];
-
-    console.log(`📩 Data from ${deviceId}`);
     deviceLastSeen[deviceId] = Date.now();
 
-    // Sensor Data
+    console.log(`📩 Data from ${deviceId}`);
+
+    // ===== SENSOR DATA =====
     const dataPoint = new Point('tarla_data')
       .tag('device', deviceId)
       .floatField('temperature', data.temperature)
@@ -63,7 +61,7 @@ client.on('message', async (topic, message) => {
       .floatField('battery', data.battery);
     writeApi.writePoint(dataPoint);
 
-    // Online Status
+    // ===== ONLINE STATUS =====
     if (deviceStates[deviceId] !== 1) {
       const statusPoint = new Point('tarla_status')
         .tag('device', deviceId)
@@ -75,7 +73,6 @@ client.on('message', async (topic, message) => {
 
     await writeApi.flush();
     console.log(`✅ ${deviceId} verisi Influx'a yazıldı`);
-
   } catch (err) {
     console.error('❌ Veri işleme hatası:', err);
   }
@@ -89,16 +86,14 @@ setInterval(async () => {
   const offlineThreshold = 5 * 60 * 1000; // 5 dakika
 
   for (const deviceId in deviceLastSeen) {
-    if (now - deviceLastSeen[deviceId] > offlineThreshold) {
-      if (deviceStates[deviceId] !== 0) {
-        const statusPoint = new Point('tarla_status')
-          .tag('device', deviceId)
-          .intField('status', 0);
-        writeApi.writePoint(statusPoint);
-        await writeApi.flush();
-        deviceStates[deviceId] = 0;
-        console.log(`🔴 ${deviceId} OFFLINE yazıldı`);
-      }
+    if (now - deviceLastSeen[deviceId] > offlineThreshold && deviceStates[deviceId] !== 0) {
+      const statusPoint = new Point('tarla_status')
+        .tag('device', deviceId)
+        .intField('status', 0);
+      writeApi.writePoint(statusPoint);
+      await writeApi.flush();
+      deviceStates[deviceId] = 0;
+      console.log(`🔴 ${deviceId} OFFLINE yazıldı`);
     }
   }
 }, 60000);
@@ -106,10 +101,11 @@ setInterval(async () => {
 /* =========================
    API ENDPOINTS
 ========================= */
-app.get('/', (req, res) => {
-  res.send('Backend çalışıyor 🚀');
-});
 
+// Health check
+app.get('/', (req, res) => res.send('Backend çalışıyor 🚀'));
+
+// Cihaz Status
 app.get('/api/status/:deviceId', async (req, res) => {
   const { deviceId } = req.params;
   const fluxQuery = `
@@ -127,6 +123,7 @@ app.get('/api/status/:deviceId', async (req, res) => {
   }
 });
 
+// Son sensör verisi
 app.get('/api/last-data/:deviceId', async (req, res) => {
   const { deviceId } = req.params;
   const fluxQuery = `
@@ -135,13 +132,11 @@ app.get('/api/last-data/:deviceId', async (req, res) => {
       |> filter(fn: (r) => r._measurement == "tarla_data")
       |> filter(fn: (r) => r.device == "${deviceId}")
       |> last()
+      |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
   `;
-  const result = {};
   try {
-    await queryApi.collectRows(fluxQuery, (row) => {
-      result[row._field] = row._value;
-    });
-    res.json(result);
+    const rows = await queryApi.collectRows(fluxQuery);
+    res.json(rows.length ? rows[0] : {});
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -150,6 +145,4 @@ app.get('/api/last-data/:deviceId', async (req, res) => {
 /* =========================
    Server Start
 ========================= */
-app.listen(port, () => {
-  console.log(`🚀 Server listening on port ${port}`);
-});
+app.listen(port, () => console.log(`🚀 Server listening on port ${port}`));
