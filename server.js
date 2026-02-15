@@ -79,11 +79,11 @@ client.on('message', async (topic, message) => {
 });
 
 /* =========================
-   OFFLINE CHECK (5 dk)
+   OFFLINE CHECK (3 dk)
 ========================= */
 setInterval(async () => {
   const now = Date.now();
-  const offlineThreshold = 5 * 60 * 1000; // 5 dakika
+  const offlineThreshold = 3 * 60 * 1000; // 5 dakika
 
   for (const deviceId in deviceLastSeen) {
     if (now - deviceLastSeen[deviceId] > offlineThreshold && deviceStates[deviceId] !== 0) {
