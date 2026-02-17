@@ -1,6 +1,6 @@
 import express from "express";
 import mqtt from "mqtt";
-import { InfluxDB } from "@influxdata/influxdb-client";
+import { InfluxDB, Point } from "@influxdata/influxdb-client";
 
 const app = express();
 app.use(express.json());
@@ -14,30 +14,68 @@ const influxDB = new InfluxDB({
   token: process.env.INFLUX_TOKEN,
 });
 
-const queryApi = influxDB.getQueryApi(process.env.INFLUX_ORG);
+const org = process.env.INFLUX_ORG;
 const bucket = process.env.INFLUX_BUCKET;
+
+const queryApi = influxDB.getQueryApi(org);
+const writeApi = influxDB.getWriteApi(org, bucket);
 
 /* ================== MQTT ================== */
 
 const mqttClient = mqtt.connect(process.env.MQTT_URL);
 
-let deviceStatus = { istasyon1: 0 };
+let deviceStatus = {};
 
 mqttClient.on("connect", () => {
   console.log("MQTT Connected");
-  mqttClient.subscribe("tarla/istasyon1/status");
+
+  // DATA ve STATUS topicleri
+  mqttClient.subscribe("tarla/+/data");
+  mqttClient.subscribe("tarla/+/status");
 });
 
 mqttClient.on("message", (topic, message) => {
-  if (topic === "tarla/istasyon1/status") {
-    deviceStatus.istasyon1 = parseInt(message.toString());
+  console.log("Topic:", topic);
+
+  const parts = topic.split("/");
+  if (parts.length < 3) return;
+
+  const device = parts[1];
+  const type = parts[2];
+
+  /* ===== STATUS ===== */
+  if (type === "status") {
+    deviceStatus[device] = parseInt(message.toString());
+    console.log("Status updated:", device, deviceStatus[device]);
+    return;
+  }
+
+  /* ===== DATA ===== */
+  if (type === "data") {
+    try {
+      const data = JSON.parse(message.toString());
+
+      const point = new Point(device)
+        .floatField("temperature", Number(data.temperature))
+        .floatField("humidity", Number(data.humidity))
+        .floatField("soil_moisture", Number(data.soil_moisture))
+        .floatField("battery", Number(data.battery));
+
+      writeApi.writePoint(point);
+      writeApi.flush();
+
+      console.log("Influx yazıldı:", device);
+    } catch (err) {
+      console.error("MQTT parse error:", err.message);
+    }
   }
 });
 
-/* ================== STATUS ================== */
+/* ================== STATUS API ================== */
 
 app.get("/api/status/:device", (req, res) => {
-  res.json({ status: deviceStatus[req.params.device] || 0 });
+  const device = req.params.device;
+  res.json({ status: deviceStatus[device] || 0 });
 });
 
 /* ================== LAST DATA ================== */
