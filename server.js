@@ -7,27 +7,21 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-/* ============================
-   INFLUX CONFIG
-============================ */
+/* ================== INFLUX ================== */
 
-const token = process.env.INFLUX_TOKEN;
-const org = process.env.INFLUX_ORG;
+const influxDB = new InfluxDB({
+  url: process.env.INFLUX_URL,
+  token: process.env.INFLUX_TOKEN,
+});
+
+const queryApi = influxDB.getQueryApi(process.env.INFLUX_ORG);
 const bucket = process.env.INFLUX_BUCKET;
-const url = process.env.INFLUX_URL;
 
-const influxDB = new InfluxDB({ url, token });
-const queryApi = influxDB.getQueryApi(org);
-
-/* ============================
-   MQTT CONFIG
-============================ */
+/* ================== MQTT ================== */
 
 const mqttClient = mqtt.connect(process.env.MQTT_URL);
 
-let deviceStatus = {
-  istasyon1: 0,
-};
+let deviceStatus = { istasyon1: 0 };
 
 mqttClient.on("connect", () => {
   console.log("MQTT Connected");
@@ -40,20 +34,15 @@ mqttClient.on("message", (topic, message) => {
   }
 });
 
-/* ============================
-   STATUS ENDPOINT
-============================ */
+/* ================== STATUS ================== */
 
 app.get("/api/status/:device", (req, res) => {
-  const device = req.params.device;
-  res.json({ status: deviceStatus[device] || 0 });
+  res.json({ status: deviceStatus[req.params.device] || 0 });
 });
 
-/* ============================
-   LAST DATA ENDPOINT
-============================ */
+/* ================== LAST DATA ================== */
 
-app.get("/api/last-data/:device", async (req, res) => {
+app.get("/api/last-data/:device", (req, res) => {
   const device = req.params.device;
 
   const query = `
@@ -67,8 +56,7 @@ app.get("/api/last-data/:device", async (req, res) => {
 
   queryApi.queryRows(query, {
     next(row, tableMeta) {
-      const o = tableMeta.toObject(row);
-      rows.push(o);
+      rows.push(tableMeta.toObject(row));
     },
     complete() {
       let result = {};
@@ -77,27 +65,24 @@ app.get("/api/last-data/:device", async (req, res) => {
       });
       res.json(result);
     },
-    error(error) {
-      res.status(500).json({ error: error.message });
+    error(err) {
+      res.status(500).json({ error: err.message });
     }
   });
 });
 
-/* ============================
-   GRAFANA STYLE HISTORY ENDPOINT
-============================ */
+/* ================== HISTORY (GRAFANA STYLE) ================== */
 
-app.get("/api/history/:device", async (req, res) => {
+app.get("/api/history/:device", (req, res) => {
   const device = req.params.device;
   const field = req.query.field;
   const start = req.query.start || "-24h";
 
   if (!field) {
-    return res.status(400).json({ error: "field param required" });
+    return res.status(400).json({ error: "field required" });
   }
 
   let window = "5m";
-
   if (start === "-7d") window = "30m";
   if (start === "-30d") window = "2h";
   if (start === "-365d") window = "1d";
@@ -124,15 +109,13 @@ app.get("/api/history/:device", async (req, res) => {
     complete() {
       res.json(result);
     },
-    error(error) {
-      res.status(500).json({ error: error.message });
+    error(err) {
+      res.status(500).json({ error: err.message });
     }
   });
 });
 
-/* ============================
-   START SERVER
-============================ */
+/* ================== START ================== */
 
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
