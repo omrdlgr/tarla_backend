@@ -1,6 +1,6 @@
-const express = require("express");
-const mqtt = require("mqtt");
-const { InfluxDB } = require("@influxdata/influxdb-client");
+import express from "express";
+import mqtt from "mqtt";
+import { InfluxDB } from "@influxdata/influxdb-client";
 
 const app = express();
 app.use(express.json());
@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 3000;
 /* ============================
    INFLUX CONFIG
 ============================ */
+
 const token = process.env.INFLUX_TOKEN;
 const org = process.env.INFLUX_ORG;
 const bucket = process.env.INFLUX_BUCKET;
@@ -21,6 +22,7 @@ const queryApi = influxDB.getQueryApi(org);
 /* ============================
    MQTT CONFIG
 ============================ */
+
 const mqttClient = mqtt.connect(process.env.MQTT_URL);
 
 let deviceStatus = {
@@ -41,6 +43,7 @@ mqttClient.on("message", (topic, message) => {
 /* ============================
    STATUS ENDPOINT
 ============================ */
+
 app.get("/api/status/:device", (req, res) => {
   const device = req.params.device;
   res.json({ status: deviceStatus[device] || 0 });
@@ -49,6 +52,7 @@ app.get("/api/status/:device", (req, res) => {
 /* ============================
    LAST DATA ENDPOINT
 ============================ */
+
 app.get("/api/last-data/:device", async (req, res) => {
   const device = req.params.device;
 
@@ -60,6 +64,7 @@ app.get("/api/last-data/:device", async (req, res) => {
   `;
 
   const rows = [];
+
   queryApi.queryRows(query, {
     next(row, tableMeta) {
       const o = tableMeta.toObject(row);
@@ -79,8 +84,9 @@ app.get("/api/last-data/:device", async (req, res) => {
 });
 
 /* ============================
-   HISTORY ENDPOINT (NEW)
+   GRAFANA STYLE HISTORY ENDPOINT
 ============================ */
+
 app.get("/api/history/:device", async (req, res) => {
   const device = req.params.device;
   const field = req.query.field;
@@ -90,6 +96,44 @@ app.get("/api/history/:device", async (req, res) => {
     return res.status(400).json({ error: "field param required" });
   }
 
+  let window = "5m";
+
+  if (start === "-7d") window = "30m";
+  if (start === "-30d") window = "2h";
+  if (start === "-365d") window = "1d";
+
   const query = `
     from(bucket: "${bucket}")
       |> range(start: ${start})
+      |> filter(fn: (r) => r._measurement == "${device}")
+      |> filter(fn: (r) => r._field == "${field}")
+      |> aggregateWindow(every: ${window}, fn: mean, createEmpty: false)
+      |> sort(columns: ["_time"])
+  `;
+
+  const result = [];
+
+  queryApi.queryRows(query, {
+    next(row, tableMeta) {
+      const o = tableMeta.toObject(row);
+      result.push({
+        time: o._time,
+        value: o._value
+      });
+    },
+    complete() {
+      res.json(result);
+    },
+    error(error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+});
+
+/* ============================
+   START SERVER
+============================ */
+
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
