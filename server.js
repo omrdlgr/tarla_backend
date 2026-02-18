@@ -45,7 +45,8 @@ mqttClient.on("message", (topic, message) => {
     try {
       const data = JSON.parse(message.toString());
 
-      const point = new Point(device)
+      const point = new Point("tarla_data") // measurement sabit
+        .tag("device", device)             // device tag
         .floatField("temperature", Number(data.temperature))
         .floatField("humidity", Number(data.humidity))
         .floatField("soil_moisture", Number(data.soil_moisture))
@@ -75,7 +76,6 @@ app.get("/api/status/:device", (req, res) => {
 
   const diff = Date.now() - lastSeen;
 
-  // 5 dakika = offline
   const online = diff < 5 * 60 * 1000 ? 1 : 0;
 
   res.json({ status: online });
@@ -89,7 +89,7 @@ app.get("/api/last-data/:device", (req, res) => {
   const query = `
     from(bucket: "${bucket}")
       |> range(start: -1h)
-      |> filter(fn: (r) => r._measurement == "${device}")
+      |> filter(fn: (r) => r._measurement == "tarla_data" and r.device == "${device}")
       |> last()
   `;
 
@@ -131,7 +131,7 @@ app.get("/api/history/:device", (req, res) => {
   const seriesQuery = `
     from(bucket: "${bucket}")
       |> range(start: ${start})
-      |> filter(fn: (r) => r._measurement == "${device}")
+      |> filter(fn: (r) => r._measurement == "tarla_data" and r.device == "${device}")
       |> filter(fn: (r) => r._field == "${field}")
       |> aggregateWindow(every: ${window}, fn: mean, createEmpty: false)
       |> sort(columns: ["_time"])
@@ -140,7 +140,7 @@ app.get("/api/history/:device", (req, res) => {
   const statsQuery = `
     data = from(bucket: "${bucket}")
       |> range(start: ${start})
-      |> filter(fn: (r) => r._measurement == "${device}")
+      |> filter(fn: (r) => r._measurement == "tarla_data" and r.device == "${device}")
       |> filter(fn: (r) => r._field == "${field}")
 
     minVal = data |> min()
@@ -154,7 +154,6 @@ app.get("/api/history/:device", (req, res) => {
   const series = [];
   let stats = { min: null, max: null, mean: null, last: null };
 
-  // SERIES
   queryApi.queryRows(seriesQuery, {
     next(row, tableMeta) {
       const o = tableMeta.toObject(row);
@@ -164,22 +163,17 @@ app.get("/api/history/:device", (req, res) => {
       });
     },
     complete() {
-
-      // STATS
       queryApi.queryRows(statsQuery, {
         next(row, tableMeta) {
           const o = tableMeta.toObject(row);
 
           if (o._value === undefined) return;
 
-          if (o._measurement === device) {
-            if (o._field === field) {
-              // Flux fonksiyon tipine göre ayırıyoruz
-              if (o._value !== undefined) {
-                if (!stats.min || o._value < stats.min) stats.min = o._value;
-                if (!stats.max || o._value > stats.max) stats.max = o._value;
-              }
-            }
+          if (o._measurement === "tarla_data" && o.device === device && o._field === field) {
+            if (!stats.min || o._value < stats.min) stats.min = o._value;
+            if (!stats.max || o._value > stats.max) stats.max = o._value;
+            if (!stats.mean) stats.mean = o._value;
+            if (!stats.last) stats.last = o._value;
           }
         },
         complete() {
@@ -189,7 +183,6 @@ app.get("/api/history/:device", (req, res) => {
           res.status(500).json({ error: err.message });
         }
       });
-
     },
     error(err) {
       res.status(500).json({ error: err.message });
