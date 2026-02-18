@@ -22,7 +22,11 @@ const writeApi = influxDB.getWriteApi(org, bucket);
 
 /* ================== MQTT ================== */
 
-const mqttClient = mqtt.connect(process.env.MQTT_BROKER);
+const mqttClient = mqtt.connect(process.env.MQTT_BROKER, {
+  username: process.env.MQTT_USER,
+  password: process.env.MQTT_PASS,
+});
+
 
 let deviceStatus = {};
 
