@@ -27,15 +27,17 @@ const mqttClient = mqtt.connect(process.env.MQTT_BROKER, {
   password: process.env.MQTT_PASS,
 });
 
-
 let deviceStatus = {};
 
 mqttClient.on("connect", () => {
   console.log("MQTT Connected");
 
-  // DATA ve STATUS topicleri
   mqttClient.subscribe("tarla/+/data");
   mqttClient.subscribe("tarla/+/status");
+});
+
+mqttClient.on("error", (err) => {
+  console.error("MQTT ERROR:", err.message);
 });
 
 mqttClient.on("message", (topic, message) => {
@@ -130,26 +132,55 @@ app.get("/api/history/:device", (req, res) => {
   if (start === "-365d") window = "1d";
 
   const query = `
-    from(bucket: "${bucket}")
+    data = from(bucket: "${bucket}")
       |> range(start: ${start})
       |> filter(fn: (r) => r._measurement == "${device}")
       |> filter(fn: (r) => r._field == "${field}")
+
+    series = data
       |> aggregateWindow(every: ${window}, fn: mean, createEmpty: false)
       |> sort(columns: ["_time"])
+
+    stats = data
+      |> reduce(
+        identity: {min: 1000000.0, max: -1000000.0, sum: 0.0, count: 0.0, last: 0.0},
+        fn: (r, accumulator) => ({
+          min: if r._value < accumulator.min then r._value else accumulator.min,
+          max: if r._value > accumulator.max then r._value else accumulator.max,
+          sum: accumulator.sum + r._value,
+          count: accumulator.count + 1.0,
+          last: r._value
+        })
+      )
+
+    union(tables: [series, stats])
   `;
 
-  const result = [];
+  const series = [];
+  let stats = {};
 
   queryApi.queryRows(query, {
     next(row, tableMeta) {
       const o = tableMeta.toObject(row);
-      result.push({
-        time: o._time,
-        value: o._value
-      });
+
+      if (o._time && o._value !== undefined) {
+        series.push({
+          time: o._time,
+          mean: o._value
+        });
+      }
+
+      if (o.min !== undefined) {
+        stats = {
+          min: o.min,
+          max: o.max,
+          mean: o.count > 0 ? o.sum / o.count : 0,
+          last: o.last
+        };
+      }
     },
     complete() {
-      res.json(result);
+      res.json({ series, stats });
     },
     error(err) {
       res.status(500).json({ error: err.message });
