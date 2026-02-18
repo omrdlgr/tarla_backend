@@ -27,36 +27,20 @@ const mqttClient = mqtt.connect(process.env.MQTT_BROKER, {
   password: process.env.MQTT_PASS,
 });
 
-let deviceStatus = {};
+let deviceLastSeen = {}; // online/offline için
 
 mqttClient.on("connect", () => {
   console.log("MQTT Connected");
-
   mqttClient.subscribe("tarla/+/data");
-  mqttClient.subscribe("tarla/+/status");
-});
-
-mqttClient.on("error", (err) => {
-  console.error("MQTT ERROR:", err.message);
 });
 
 mqttClient.on("message", (topic, message) => {
-  console.log("Topic:", topic);
-
   const parts = topic.split("/");
   if (parts.length < 3) return;
 
   const device = parts[1];
   const type = parts[2];
 
-  /* ===== STATUS ===== */
-  if (type === "status") {
-    deviceStatus[device] = parseInt(message.toString());
-    console.log("Status updated:", device, deviceStatus[device]);
-    return;
-  }
-
-  /* ===== DATA ===== */
   if (type === "data") {
     try {
       const data = JSON.parse(message.toString());
@@ -70,18 +54,31 @@ mqttClient.on("message", (topic, message) => {
       writeApi.writePoint(point);
       writeApi.flush();
 
+      deviceLastSeen[device] = Date.now();
+
       console.log("Influx yazıldı:", device);
     } catch (err) {
-      console.error("MQTT parse error:", err.message);
+      console.error("Parse error:", err.message);
     }
   }
 });
 
-/* ================== STATUS API ================== */
+/* ================== ONLINE / OFFLINE ================== */
 
 app.get("/api/status/:device", (req, res) => {
   const device = req.params.device;
-  res.json({ status: deviceStatus[device] || 0 });
+  const lastSeen = deviceLastSeen[device];
+
+  if (!lastSeen) {
+    return res.json({ status: 0 });
+  }
+
+  const diff = Date.now() - lastSeen;
+
+  // 5 dakika = offline
+  const online = diff < 5 * 60 * 1000 ? 1 : 0;
+
+  res.json({ status: online });
 });
 
 /* ================== LAST DATA ================== */
@@ -115,7 +112,7 @@ app.get("/api/last-data/:device", (req, res) => {
   });
 });
 
-/* ================== HISTORY (GRAFANA STYLE) ================== */
+/* ================== HISTORY PRO ================== */
 
 app.get("/api/history/:device", (req, res) => {
   const device = req.params.device;
@@ -131,56 +128,68 @@ app.get("/api/history/:device", (req, res) => {
   if (start === "-30d") window = "2h";
   if (start === "-365d") window = "1d";
 
-  const query = `
+  const seriesQuery = `
+    from(bucket: "${bucket}")
+      |> range(start: ${start})
+      |> filter(fn: (r) => r._measurement == "${device}")
+      |> filter(fn: (r) => r._field == "${field}")
+      |> aggregateWindow(every: ${window}, fn: mean, createEmpty: false)
+      |> sort(columns: ["_time"])
+  `;
+
+  const statsQuery = `
     data = from(bucket: "${bucket}")
       |> range(start: ${start})
       |> filter(fn: (r) => r._measurement == "${device}")
       |> filter(fn: (r) => r._field == "${field}")
 
-    series = data
-      |> aggregateWindow(every: ${window}, fn: mean, createEmpty: false)
-      |> sort(columns: ["_time"])
+    minVal = data |> min()
+    maxVal = data |> max()
+    meanVal = data |> mean()
+    lastVal = data |> last()
 
-    stats = data
-      |> reduce(
-        identity: {min: 1000000.0, max: -1000000.0, sum: 0.0, count: 0.0, last: 0.0},
-        fn: (r, accumulator) => ({
-          min: if r._value < accumulator.min then r._value else accumulator.min,
-          max: if r._value > accumulator.max then r._value else accumulator.max,
-          sum: accumulator.sum + r._value,
-          count: accumulator.count + 1.0,
-          last: r._value
-        })
-      )
-
-    union(tables: [series, stats])
+    union(tables: [minVal, maxVal, meanVal, lastVal])
   `;
 
   const series = [];
-  let stats = {};
+  let stats = { min: null, max: null, mean: null, last: null };
 
-  queryApi.queryRows(query, {
+  // SERIES
+  queryApi.queryRows(seriesQuery, {
     next(row, tableMeta) {
       const o = tableMeta.toObject(row);
-
-      if (o._time && o._value !== undefined) {
-        series.push({
-          time: o._time,
-          mean: o._value
-        });
-      }
-
-      if (o.min !== undefined) {
-        stats = {
-          min: o.min,
-          max: o.max,
-          mean: o.count > 0 ? o.sum / o.count : 0,
-          last: o.last
-        };
-      }
+      series.push({
+        time: o._time,
+        value: o._value
+      });
     },
     complete() {
-      res.json({ series, stats });
+
+      // STATS
+      queryApi.queryRows(statsQuery, {
+        next(row, tableMeta) {
+          const o = tableMeta.toObject(row);
+
+          if (o._value === undefined) return;
+
+          if (o._measurement === device) {
+            if (o._field === field) {
+              // Flux fonksiyon tipine göre ayırıyoruz
+              if (o._value !== undefined) {
+                if (!stats.min || o._value < stats.min) stats.min = o._value;
+                if (!stats.max || o._value > stats.max) stats.max = o._value;
+              }
+            }
+          }
+        },
+        complete() {
+          res.json({ series, stats });
+        },
+        error(err) {
+          res.status(500).json({ error: err.message });
+        }
+      });
+
     },
     error(err) {
       res.status(500).json({ error: err.message });
